@@ -36,8 +36,4 @@ setuptools.setup(
         "License :: OSI Approved :: Apache Software License",
     ],
     python_requires='>=3.6, <4',
-    data_files=[
-        ('share/man/man1',["docs/man/uvn.1"]),
-        ('share/man/man8',["docs/man/uvnd.profile.8"]),
-    ],
 )
