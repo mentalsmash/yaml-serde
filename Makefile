@@ -35,7 +35,7 @@ DEPS_PIP := wheel \
             twine
 DEPS_APT := python3-pip
 
-DIST_TGT := $(DIST_DIR)/connext_tar-$(VERSION)*
+DIST_TGT := $(DIST_DIR)/$(PROJECT)-$(VERSION)*
 
 VENV_DIR ?= venv
 
