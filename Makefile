@@ -49,10 +49,7 @@ endef
 
 REQUIREMENTS ?= requirements.txt
 
-build: venv.install \
-       $(DIST_DIR)
-
-$(DIST_DIR): $(PY_SOURCE)
+build: venv.install
 	$(call VENV_EXEC, python3 setup.py sdist bdist_wheel)
 
 clean:

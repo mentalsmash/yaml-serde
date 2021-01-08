@@ -36,4 +36,7 @@ setuptools.setup(
         "License :: OSI Approved :: Apache Software License",
     ],
     python_requires='>=3.6, <4',
+    install_requires=[
+        "pyyaml>=5.1",
+    ],
 )
