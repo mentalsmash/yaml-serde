@@ -33,7 +33,9 @@ DEPS_PIP := wheel \
             twine
 DEPS_APT := python3-pip
 
-DIST_TGT := $(DIST_DIR)/yaml{_,-}serde-$(VERSION)*
+define DIST_TGT
+$(shell bash -c 'ls $(DIST_DIR)/yaml{_,-}serde-$(VERSION)*')
+endef
 
 VENV_DIR ?= venv
 
@@ -54,15 +56,15 @@ clean:
 	rm -rf $(DIST_DIR) $(BUILD_DIR) $(EGG_DIR)
 
 twine.check:
-	$(call VENV_EXEC, twine check $(DIST_TGT))
+	$(call VENV_EXEC, twine check $(call DIST_TGT))
 
 twine.upload:
 	$(call VENV_EXEC, \
 		twine upload --repository-url https://test.pypi.org/legacy/ \
-		    $(DIST_TGT))
+		    $(call DIST_TGT))
 
 pypi.upload:
-	$(call VENV_EXEC, twine upload $(DIST_TGT))
+	$(call VENV_EXEC, twine upload $(call DIST_TGT))
 
 bumpversion.%:
 	$(call VENV_EXEC, \
