@@ -21,7 +21,7 @@ with open("README.md", "r") as readme_f:
 
 setuptools.setup(
     name="yaml-serde",
-    version="0.2.0",
+    version="0.2.1",
     author="Andrea Sorbini",
     author_email="as@mentalsmash.org",
     description="Python library for simplified YAML object serialization",
