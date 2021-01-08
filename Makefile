@@ -14,8 +14,6 @@
 # limitations under the License.
 ################################################################################
 
-PROJECT := yaml_serde
-
 DIST_DIR := dist
 BUILD_DIR := build
 EGG_DIR := yaml_serde.egg-info
@@ -35,7 +33,7 @@ DEPS_PIP := wheel \
             twine
 DEPS_APT := python3-pip
 
-DIST_TGT := $(DIST_DIR)/$(PROJECT)-$(VERSION)*
+DIST_TGT := $(DIST_DIR)/yaml{_,-}serde-$(VERSION)*
 
 VENV_DIR ?= venv
 
