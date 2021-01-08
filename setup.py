@@ -21,13 +21,13 @@ with open("README.md", "r") as readme_f:
 setuptools.setup(
     name="yaml-serde",
     version="0.2.2",
-    author="Andrea Sorbini",
+    author="mentalsmash.org",
     author_email="support@mentalsmash.org",
     description="Python library for simplified YAML object serialization",
     license="License :: OSI Approved :: Apache Software License",
     long_description=readme_contents,
     long_description_content_type="text/markdown",
-    url="https://github.com/asorbini/yaml-serde",
+    url="https://github.com/mentalsmash/yaml-serde",
     packages=setuptools.find_packages(),
     classifiers=[
         "Development Status :: 3 - Alpha",
