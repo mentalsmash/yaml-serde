@@ -15,6 +15,7 @@
 ################################################################################
 __version__ = "0.2.3"
 
+import types
 import pathlib
 import collections.abc
 import json as sys_json
@@ -27,7 +28,8 @@ __all__ = [
     "repr_yml",
     "repr_py",
     "YamlError",
-    "YamlSerializer"
+    "YamlSerializer",
+    "YamlDict"
 ]
 
 def json(obj, **kwargs):
@@ -191,22 +193,34 @@ class _WrapperYamlSerializer(YamlSerializer):
     def __init__(self, tgt_cls):
         self._tgt_cls = tgt_cls
     
+    def _py_new(self, yml_repr):
+        return self._tgt_cls(yml_repr)
+
     def repr_py(self, yml_repr, **kwargs):
         py_repr = self._tgt_cls(yml_repr)
         return py_repr
 
 class _MappingYamlSerializer(_WrapperYamlSerializer):
+    def _py_new(self, yml_repr):
+        return self._tgt_cls(**yml_repr)
+
     def repr_yml(self, py_repr, **kwargs):
         yml_repr = {repr_yml(k, **kwargs): repr_yml(v, **kwargs) 
                         for k, v in py_repr.items()}
         return yml_repr
 
 class _SetYamlSerializer(_WrapperYamlSerializer):
+    def _py_new(self, yml_repr):
+        return self._tgt_cls(*yml_repr)
+
     def repr_yml(self, py_repr, **kwargs):
         yml_repr = set(repr_yml(el, **kwargs) for el in py_repr)
         return yml_repr
 
 class _IterableYamlSerializer(_WrapperYamlSerializer):
+    def _py_new(self, yml_repr):
+        return self._tgt_cls(*yml_repr)
+
     def repr_yml(self, py_repr, **kwargs):
         if isinstance(py_repr, str):
             yml_repr = py_repr
@@ -216,3 +230,169 @@ class _IterableYamlSerializer(_WrapperYamlSerializer):
 
 class _CollectionYamlSerializer(_IterableYamlSerializer):
     pass
+
+
+class YamlDict(dict):
+    def __init__(self, **kwargs):
+        dict.__init__(self, **kwargs)
+        self.validate()
+
+    def _key_validator(self, key, validate_fn, msg=None, **kwargs):
+        def _validate_el(el):
+            if not validate_fn(el):
+                self.invalid_key(key, msg=msg)
+        return _validate_el
+    
+    @staticmethod
+    def _validate_str(el, non_empty=True):
+        if not isinstance(el, str):
+            return False
+        return not non_empty or len(el) > 0
+
+    def _key_validator_str(self, key, validate_fn=None, non_empty=True,
+            **kwargs):
+        def _validate_str(el):
+            return YamlDict._validate_str(el, non_empty)
+        if not validate_fn:
+            validate_fn = _validate_str
+        return self._key_validator(key, validate_fn, **kwargs)
+
+    def set_key_default(self, kwargs, key, default, type=None):
+        user_val = kwargs.get(key)
+        if user_val is not None:
+            key_val = user_val
+        else:
+            key_val = default
+        if type:
+            key_val = type(key_val)
+        kwargs[key] = key_val
+
+    def invalid_key(self, key, msg="invalid key", err=ValueError):
+        raise err(f"{msg}: {key}")
+
+    def get(self, key, default=None):
+        canary = object()
+        val = dict.get(self, key, canary)
+        if val != canary:
+            return val
+        val = self.assert_key(key, value=canary, _assert=False)
+        if val != canary:
+            return val
+        return default
+
+    def assert_key(self, key,
+            value=None, type=object, validate=False, validate_fn=None,
+            _assert=True, **kwargs):
+        key_s = key.split(".")
+        dict_cur = self
+        depth = 0
+        canary = object()
+        add_key = False
+        sub_key = None
+        key_value = None
+        for k in key_s:
+            sub_key = k
+            key_value = dict.get(dict_cur, sub_key, canary)
+            if key_value == canary:
+                # Check that the user doesn't try to assert a nested key
+                # before they asserted its parent
+                if len(key_s) != (depth + 1):
+                    msg = f"unmatched paths {key_s[depth+1:]}"
+                    self.invalid_key(key, msg=msg)
+                add_key = True
+                break
+            # Value was found. Check if we've reached end of iteration
+            if len(key_s) == (depth + 1):
+                # we're done, nothing to do, but return the value
+                continue
+            # We have more keys to consume, "check" that the obtained
+            # value is a dict() that we can recurse into (use assert(),
+            # again, because "internal function" and all...)
+            if not isinstance(key_value, dict):
+                msg = f"not a dictionary {key_s[:depth+1]} ('{key_value}') (depth={depth})"
+                self.invalid_key(key, msg=msg)
+            dict_cur = key_value
+            depth += 1
+        if add_key:
+            if value is not None and _assert:
+                dict_cur[sub_key] = value
+            key_value = value
+        if not isinstance(key_value, type):
+            msg = "invalid key value [expected={}, found={}]".format(
+                type, key_value.__class__)
+            self.invalid_key(key, msg=msg, err=TypeError)
+        if validate:
+            if validate_fn:
+                validate_fn(key_value)
+            else:
+                key_value.validate()
+        return key_value
+
+    def assert_key_str(self, key,
+            non_empty=True,
+            validate_fn=None,
+            **kwargs):
+        return self.assert_key(key,
+            type=str,
+            validate_fn=self._key_validator_str(key,
+                validate_fn=validate_fn,
+                non_empty=non_empty,
+                **kwargs),
+            **kwargs)
+
+    def assert_key_list(self, key,
+            non_empty=True,
+            validate_elements=False,
+            validate_el=None,
+            **kwargs):
+        return self.assert_key_collection(key,
+            non_empty=non_empty,
+            validate_elements=validate_elements,
+            validate_el=validate_el,
+            **kwargs)
+    
+    def assert_key_dict(self, key,
+            non_empty=True,
+            validate_elements=False,
+            validate_el=None,
+            validate_key=None,
+            **kwargs):
+        return self.assert_key_collection(key,
+            non_empty=non_empty,
+            validate_elements=validate_elements,
+            validate_el=validate_el,
+            validate_key=validate_key,
+            enumerate_fn=lambda val: enumerate(val.items()),
+            get_el_fn=lambda el: el[1],
+            get_key_fn=lambda el: el[0],
+            **kwargs)
+
+    def assert_key_collection(self, key,
+            non_empty=True,
+            validate_elements=False,
+            validate_el=None,
+            validate_key=None,
+            enumerate_fn=enumerate,
+            get_el_fn=None,
+            get_key_fn=None,
+            **kwargs):
+        if not get_el_fn:
+            get_el_fn = lambda el: el
+        if not get_key_fn:
+            get_key_fn = lambda el: el
+        kwargs["value_type"] = kwargs.get("value_type", dict)
+        key_value = self.assert_key(key, **kwargs)
+        if non_empty and (key_value is None or len(key_value) == 0):
+            self.invalid_key(key, msg="empty collection")
+        if validate_el or validate_elements:
+            for i, el in enumerate_fn(key_value):
+                if validate_elements:
+                    try:
+                        get_el_fn(el).validate()
+                    except Exception as e:
+                        msg = f"invalid element {i} [{e}]"
+                        self.invalid_key(key, msg=msg)
+                if validate_el and not validate_el(get_el_fn(el)):
+                    self.invalid_key(key, msg=f"invalid element {i}")
+                if validate_key and not validate_key(get_key_fn(el)):
+                    self.invalid_key(key, msg=f"invalid element key {i}")
