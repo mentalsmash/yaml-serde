@@ -233,9 +233,14 @@ class _CollectionYamlSerializer(_IterableYamlSerializer):
 
 
 class YamlDict(dict):
-    def __init__(self, **kwargs):
+    def __init__(self, *args, **kwargs):
         dict.__init__(self, **kwargs)
+        for a in args:
+            self.update(a)
         self.validate()
+    
+    def validate(self):
+        pass
 
     def _key_validator(self, key, validate_fn, msg=None, **kwargs):
         def _validate_el(el):
@@ -245,9 +250,10 @@ class YamlDict(dict):
     
     @staticmethod
     def _validate_str(el, non_empty=True):
-        if not isinstance(el, str):
+        is_none = (not non_empty and el is None)
+        if not isinstance(el, str) and not is_none:
             return False
-        return not non_empty or len(el) > 0
+        return not non_empty or is_none or len(el) > 0
 
     def _key_validator_str(self, key, validate_fn=None, non_empty=True,
             **kwargs):
@@ -263,7 +269,7 @@ class YamlDict(dict):
             key_val = user_val
         else:
             key_val = default
-        if type:
+        if type is not None:
             key_val = type(key_val)
         kwargs[key] = key_val
 
@@ -317,13 +323,13 @@ class YamlDict(dict):
             if value is not None and _assert:
                 dict_cur[sub_key] = value
             key_value = value
-        if not isinstance(key_value, type):
+        if not isinstance(key_value, type) and key_value is not None:
             msg = "invalid key value [expected={}, found={}]".format(
                 type, key_value.__class__)
             self.invalid_key(key, msg=msg, err=TypeError)
         if validate:
             if validate_fn:
-                validate_fn(key_value)
+                validate_fn(key_value, **kwargs)
             else:
                 key_value.validate()
         return key_value
