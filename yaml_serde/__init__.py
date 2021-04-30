@@ -13,7 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ################################################################################
+"""Simplified YAML serialization framework"""
+
 __version__ = "0.3.0"
+__license__ = "Apache-2.0"
+__status__ = "Prototype"
+__author__ = "Andrea Sorbini"
+__maintainer__ = "Andrea Sorbini"
+__email__ = "dev@mentalsmash.org"
+__copyright__ = "Copyright 2020-2021, Andrea Sorbini"
+__credits__ = [ "Andrea Sorbini" ]
+
 
 import types
 import pathlib
@@ -27,31 +37,38 @@ __all__ = [
     "yml_obj",
     "repr_yml",
     "repr_py",
+    "json",
     "YamlError",
     "YamlSerializer",
     "YamlDict"
 ]
 
 def json(obj, **kwargs):
+    """Serialize an object to a JSON string or file."""
     return yml(obj, _json=True, **kwargs)
 
 def yml(obj, **kwargs):
+    """Serialize an object to a YAML string or file."""
     serializer = YamlSerializer._class_serializer_assert_obj(obj)
     return serializer.to_yaml(obj, **kwargs)
 
 def yml_obj(cls, yml_str, **kwargs):
+    """Convert a YAML string or file into a Python object."""
     serializer = YamlSerializer._class_serializer_assert(cls)
     return serializer.from_yaml(yml_str, **kwargs)
 
 def repr_yml(py_repr, **kwargs):
+    """Convert a Python object into its YAML-safe representation."""
     serializer = YamlSerializer._class_serializer_assert_obj(py_repr)
     return serializer.repr_yml(py_repr, **kwargs)
 
 def repr_py(cls, yml_repr, **kwargs):
+    """Convert a YAML-safe representation into a Python object."""
     serializer = YamlSerializer._class_serializer_assert(cls)
     return serializer.repr_py(yml_repr, **kwargs)
 
 class YamlError(Exception):
+    """A generic exception for all errors occurred during YAML conversion"""
     def __init__(self, msg):
         self.msg = msg
 
@@ -61,6 +78,7 @@ def YamlObject(cls):
     return cls
 
 class YamlSerializer:
+    """Base class for all custom YAML serialization mappings."""
 
     _class_serializer_attr = "_serializer_yml"
     _class_serializer_name = "_YamlSerializer"
@@ -233,6 +251,12 @@ class _CollectionYamlSerializer(_IterableYamlSerializer):
 
 
 class YamlDict(dict):
+    """A YAML-based, custom-validated, dictionary.
+
+    `YamlDict` extends the basic Python `dict` to support the specification of
+    a basic "dictionary schema" which may then be used to validate the
+    dictionary to make sure that it contains the expected keys.
+    """
     def __init__(self, *args, **kwargs):
         dict.__init__(self, **kwargs)
         for a in args:
