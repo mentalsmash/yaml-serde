@@ -30,7 +30,7 @@ The result can also be saved directly into a file by specifying a path
 with `to_file`:
 
 ```py
-yml_str = yml(bar, to_file="bar.yml")
+yml(bar, to_file="bar.yml")
 ```
 
 If you prefer, you can also convert object to JSON using function `json()`:
@@ -146,4 +146,99 @@ class Bar:
       return [repr_yml(f, **kwargs) for f in py_repr.bar]
     def repr_py(self, yml_repr, **kwargs):
       return Bar(bar=[repr_py(Foo, f) for f in yml_repr])
+```
+
+The serializer class will be passed through all the extra keyword
+arguments passed to the `yml()` and `yml_obj()` functions.
+
+This can be used to implement optional behavior in the serializer,
+for example to exclude certain fields from serialization:
+
+```py
+from yaml_serde import YamlSerializer, repr_yml
+
+class MyClassWithPrivateFields:
+  def __init__(self, user : str, passwd : str):
+    self.user = user
+    self.passwd = passwd
+  
+  class _YamlSerializer(YamlSerializer):
+    def repr_yml(self, py_repr, **kwargs):
+      yml_repr = {"user": py_repr.user}
+      if not kwargs.get("public_only"):
+        yml_repr["passwd"] = py_repr.passwd
+      return yml_repr
+    def repr_py(self, yml_repr, **kwargs):
+      return MyClass(yml_repr["user"], yml_repr.get("passwd",""))
+
+def test_my_class_with_private_fields():
+  from yaml_serde import yml, yml_obj
+
+  obj = MyClassWithPrivateFields("foo", "bar")
+
+  yml_str = yml(obj)
+  assert "passwd: bar" in yml_str
+
+  obj = yml_obj(MyClassWithPrivateFields, yml_str)
+  assert obj.passwd == "bar"
+
+  yml_str = yml(obj, public_only=True)
+  assert "passwd: bar" not in yml_str
+
+  obj = yml_obj(MyClassWithPrivateFields, yml_str)
+  assert obj.passwd == ""
+```
+
+Class `YamlSerializer` offers two methods which subclasses can override
+to customize the serialization of data in files:
+
+- `YamlSerializer::_file_format_out()` is called when a YAML string is
+  about to be written to a file. It takes the YAML string
+  (along with any extra keyword arguments passed to `yml()`), and it
+  must return the actual string that will be written to the file system.
+
+- `YamlSerializer::_file_format_in()` is load whenever a YAML string is
+  loaded from a file. It take the file's contents (along with any extra
+  keywork arguments passed to `yml_obj()`) and it must return the
+  string to parse into an object.
+
+These function can be used to pre/post-process the contents of a file,
+for example to encode it on serialization, and decoding it when the
+value is read back from the file:
+
+```py
+from yaml_serde import YamlSerializer, repr_yml
+
+class MyEncodedClass:
+  def __init__(self, user : str, passwd : str):
+    self.user = user
+    self.passwd = passwd
+  
+  class _YamlSerializer(YamlSerializer):
+    def repr_yml(self, py_repr, **kwargs):
+      return {"user": py_repr.user, "passwd": py_repr.passwd}
+    def repr_py(self, yml_repr, **kwargs):
+      return MyClass(yml_repr["user"], yml_repr["passwd"])
+    def _file_format_in(self, yml_str, **kwargs):
+      encoder = kwargs["encoder"]
+      return encoder.encode(yml_str)
+    def _file_format_out(self, yml_str, **kwargs):
+      encoder = kwargs["encoder"]
+      return encoder.decode(yml_str)
+
+def test_my_encoded_class():
+  from yaml_serde import yml, yml_obj
+  
+  from my_encoder_package import MyEncoder
+
+  obj = MyEncodedClass("foo", "bar")
+  
+  encoder = MyEncoder()
+
+  yml(obj, to_file="encoded.yml", encoder=encoder)
+  
+  obj = yml_obj(MyEncodedClass, from_file="encoded.yml", encoder=encoder)
+
+  assert obj.user == "foo"
+  assert obj.passwd == "bar"
 ```
