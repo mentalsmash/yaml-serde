@@ -243,7 +243,7 @@ class _IterableYamlSerializer(_WrapperYamlSerializer):
         if isinstance(py_repr, str):
             yml_repr = py_repr
         else:
-            yml_repr = list(repr_yml(el, **kwargs) for el in py_repr)
+            yml_repr = tuple(repr_yml(el, **kwargs) for el in py_repr)
         return yml_repr
 
 class _CollectionYamlSerializer(_IterableYamlSerializer):

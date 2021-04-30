@@ -1,87 +1,149 @@
-# yaml-serde - Simplified YAML object serialization
+# yaml-serde - Simplified YAML serialization framework
 
-*yaml_serde* provides a framework for implementing custom conversions of
+*yaml-serde* provides a framework for implementing custom conversions of
 Python objects to and from the YAML serialization format.
 
 These transformations allow applications to use YAML as a simple way to persist
 and share objects.
 
-The framework is built on top of PyYAML (`yaml`), as way to wrap functions
-`yaml.safe_dump()` and `yaml.safe_load()` so that they may be used with objects
-of any user-defined class.
+## Python to YAML
+
+After the appropriate serializers have been defined (see [Custom YAML serialization](#custom-yaml-serialization)),
+objects can be transformed to a YAML string using function `yml()`:
+
+```py
+from yaml_serde import yml
+
+bar = Bar()
+yml_str = yml(bar)
+assert yml_str == """---
+bar:
+  - foo: 1
+  - foo: 2
+  - foo: 3
+
+...
+"""
+```
+
+The result can also be saved directly into a file by specifying a path
+with `to_file`:
+
+```py
+yml_str = yml(bar, to_file="bar.yml")
+```
+
+If you prefer, you can also convert object to JSON using function `json()`:
+
+```py
+from yaml_serde import yml
+
+bar = Bar()
+json_str = json(bar)
+assert json_str == '[{"foo": 1}, {"foo": 2}, {"foo": 3}]'
+```
+
+## YAML to Python
+
+Given a YAML (or JSON) string, you can build a Python object out of it 
+using function `yml_obj()`. This function takes a class object and the
+input string, and will return an instance of the class built by its
+serializer:
+
+```py
+import pathlib
+from yaml_serde import yml_obj
+
+with pathlib.Path("bar.yml").open("r") as input:
+  bar = yml_obj(Bar, input.read())
+```
+
+Since loading YAML from a file is common enough, 
+`yml_obj()` offers argument `from_file` to specify the path of file
+from which to read the input string:
+
+```py
+bar = yml_obj(Bar, from_file="bar.yml")
+```
+
+## Custom YAML serialization
+
+The *yaml-serde* framework is built on top of [PyYAML](https://pypi.org/project/PyYAML/),
+as way to wrap functions `yaml.safe_dump()` and `yaml.safe_load()` so that
+they may be used with objects of any user-defined class.
 
 These functions only accept basic Python objects such as numbers, strings,
-arrays, and dictionaries, and they are design to reject any generic "object"
-(which must be handled using the "unsafe" versions).
+arrays, and dictionaries, and they are designed to reject any generic "object"
+(which must be handled using their "unsafe" counterparts).
 
-For this reason, *yaml_serde* enables users with a way to implement the logic
-required to convert instances of a class between their "Python representation"
-(i.e. "normal" Python objects) and an equivalent "YAML representation" which
-may be consumed (or produced) by the PyYAML functions.
+For this reason, *yaml_serde* allows users to implement the logic required to
+convert instances of their classes into "YAML-safe" representations
+compatible with the PyYAML functions.
 
-This representation will typically be a dictionary storing the state of the
-object using only "safe" types.
+The conversion is implemented by a nested "serializer" class,
+called `_YamlSerializer` and derived from `yaml_serde.YamlSerializer`, which
+must be manually defined for every class to convert, and provide two methods:
 
-The conversion is implemented by defining a nested "serializer" class,
-called `_YamlSerializer` and derived from `yaml_serde.YamlSerializer`.
-
-This class must provide two methods:
-
-- `repr_yml(self, py_repr, **kwargs)`:
+- `YamlSerializer::repr_yml(self, py_repr, **kwargs)`:
   - Take an object in its "Python representation" and return the equivalent
     "YAML representation".
+  - The value returned by this function must be safe to pass to
+    `yaml.safe_dump()`.
 
-- `repr_py(self, yml_repr, **kwargs)`:
+- `YamlSerializer::repr_py(self, yml_repr, **kwargs)`:
   - Take an object's "YAML representation" and return its
     "Python representation".
+  - The value returned by this function should be an instance of the associated
+    class.
 
-Two convenience functions (`repr_yml()` and `repr_py()`) can be used to convert
-objects between the two formats.
+Implementations are free to map an objects state to YAML however they prefer.
 
-This is useful to build a "recursive" serializer, which converts and parsers
-user-defined and/or "unsafe" nested values:
-
-It is also not necessary to implement both conversions, if only one is needed,
-for example Python to YAML:
+For example, in the case of a trivial class, a simple string might be used:
 
 ```py
 from yaml_serde import YamlSerializer, repr_yml
 
 class MyClass:
-  def __init__(self, foo):
+  def __init__(self, foo : str):
     self.foo = foo
-    self.bar = [MyClass(1), MyClass(2), MyClass(3)]
   
   class _YamlSerializer(YamlSerializer):
     def repr_yml(self, py_repr, **kwargs):
-      return {
-        "foo": py_repr.foo,
-        "bar": [repr_yml(c) for c in py_repr.bar]
-      }
+      return py_repr.foo
+    def repr_py(self, yml_repr, **kwargs):
+      return MyClass(yml_repr)
 ```
 
-When loading a Python object from YAML, it might be convenient to define a
-constructor which can optionally take pre-created values loaded from YAML using
-`repr_py()`:
+In most cases, a class will likely map to a dictionary, with entries for each of
+its state attributes.
+
+Two convenience functions (`repr_yml()` and `repr_py()`) can be used to
+automatically invoke an object's serializer, and convert it between the two
+formats. These functions can be useful to build a "recursive" serializer:
 
 ```py
 from yaml_serde import YamlSerializer, repr_yml, repr_py
 
-class MyClass:
-  def __init__(self, foo, bar=None):
+class Foo:
+  def __init__(self, foo):
     self.foo = foo
+  
+  class _YamlSerializer(YamlSerializer):
+    def repr_yml(self, py_repr, **kwargs):
+      return {"foo": py_repr.foo}
+    def repr_py(self, yml_repr, **kwargs):
+      return Foo(foo=yml_repr["foo"])
+
+class Bar:
+  def __init__(self, bar=None):
     if bar is None:
-      self.bar = [MyClass(1), MyClass(2), MyClass(3)]
+      self.bar = [Foo(1), Foo(2), Foo(3)]
     else:
       self.bar = bar
   
   class _YamlSerializer(YamlSerializer):
     def repr_yml(self, py_repr, **kwargs):
-      return {
-        "foo": py_repr.foo,
-        "bar": [repr_yml(c) for c in py_repr.bar]
-      }
+      return [repr_yml(f, **kwargs) for f in py_repr.bar]
     def repr_py(self, yml_repr, **kwargs):
-      bar = [repr_py(MyClass, c) for c in yml_repr["bar"]]
-      return MyClass(yml_repr["foo"], bar)
+      return Bar(bar=[repr_py(Foo, f) for f in yml_repr])
 ```
