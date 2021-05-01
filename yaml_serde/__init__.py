@@ -15,7 +15,7 @@
 ################################################################################
 """Simplified YAML serialization framework"""
 
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 __license__ = "Apache-2.0"
 __status__ = "Prototype"
 __author__ = "Andrea Sorbini"
