@@ -270,6 +270,9 @@ class MyEncoder:
     return f"{self.prefix}{contents}{self.prefix}"
   def decode(self, contents):
     return contents[len(self.prefix):-len(self.prefix)]
+  def verify(self, encoded):
+    assert encoded.startswith(pfx)
+    assert encoded.endswith(pfx)
 
 def test_my_encoded_class():
   from yaml_serde import yml, yml_obj
@@ -285,9 +288,7 @@ def test_my_encoded_class():
 
   import pathlib
   with pathlib.Path("encoded.yml").open("r") as input:
-    encoded = input.read();
-    assert encoded.startswith(pfx)
-    assert encoded.endswith(pfx)
+    assert encoder.verify(input.read())
 
   obj = yml_obj(MyEncodedClass, "encoded.yml", from_file=True, encoder=encoder)
 
@@ -307,10 +308,18 @@ by multiple `YamlSerializer` classes:
 ```py
 from yaml_serde import LocalFileSystem
 
-class MyEncodedFileSystem(LocalFileSystem):
-  def __init__(self):
-    self.encoded = MyEncoder()
+class MyEncoder:
+  def __init__(self, prefix):
+    self.prefix = prefix
+  def encode(self, contents):
+    return f"{self.prefix}{contents}{self.prefix}"
+  def decode(self, contents):
+    return contents[len(self.prefix):-len(self.prefix)]
+  def verify(self, encoded):
+    assert encoded.startswith(pfx)
+    assert encoded.endswith(pfx)
 
+class MyEncodedFileSystem(LocalFileSystem):
   def format_output(self, output, append=False, **kwargs):
     pfx = kwargs.get("pfx")
     if pfx is not None:
@@ -327,13 +336,15 @@ class MyEncodedFileSystem(LocalFileSystem):
     else:
       return input
 
+encoded_fs = MyEncodedFileSystem()
+
 class MyEncodedClass:
   def __init__(self, user : str, passwd : str):
     self.user = user
     self.passwd = passwd
   
   class _YamlSerializer(YamlSerializer):
-    fs = MyEncodedFileSystem()
+    fs = encoded_fs
     def repr_yml(self, py_repr, **kwargs):
       return {"user": py_repr.user, "passwd": py_repr.passwd}
     def repr_py(self, yml_repr, **kwargs):
@@ -344,12 +355,11 @@ class MyOtherEncodedClass:
     self.foo = foo
 
   class _YamlSerializer(YamlSerializer):
-    fs = MyEncodedFileSystem()
+    fs = encoded_fs
     def repr_yml(self, py_repr, **kwargs):
       return py_repr.foo
     def repr_py(self, yml_repr, **kwargs):
       return MyClass(yml_repr)
-
 
 def test_my_encoded_classes():
   from yaml_serde import yml, yml_obj
@@ -364,13 +374,11 @@ def test_my_encoded_classes():
   yml(obj, to_file="encoded_obj.yml", pfx=pfx)
   yml(obj, to_file="encoded_other_obj.yml", pfx=pfx)
 
-  import pathlib
   def check_encoded(f):
+    import pathlib
     with pathlib.Path(f).open("r") as input:
-      encoded = input.read();
-      assert encoded.startswith(pfx)
-      assert encoded.endswith(pfx)
-  
+      assert encoder.verify(input.read())
+
   check_encoded("encoded_obj.yml")
   check_encoded("encoded_other_obj.yml")
 
