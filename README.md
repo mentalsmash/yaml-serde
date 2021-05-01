@@ -271,8 +271,8 @@ class MyEncoder:
   def decode(self, contents):
     return contents[len(self.prefix):-len(self.prefix)]
   def verify(self, encoded):
-    assert encoded.startswith(pfx)
-    assert encoded.endswith(pfx)
+    assert encoded.startswith(self.prefix)
+    assert encoded.endswith(self.prefix)
 
 def test_my_encoded_class():
   from yaml_serde import yml, yml_obj
@@ -280,9 +280,8 @@ def test_my_encoded_class():
   from my_encoder_package import MyEncoder
 
   obj = MyEncodedClass("foo", "bar")
-  
-  pfx = "****\n"
-  encoder = MyEncoder(pfx)
+
+  encoder = MyEncoder("****\n")
 
   yml(obj, to_file="encoded.yml", encoder=encoder)
 
@@ -316,8 +315,8 @@ class MyEncoder:
   def decode(self, contents):
     return contents[len(self.prefix):-len(self.prefix)]
   def verify(self, encoded):
-    assert encoded.startswith(pfx)
-    assert encoded.endswith(pfx)
+    assert encoded.startswith(self.prefix)
+    assert encoded.endswith(self.prefix)
 
 class MyEncodedFileSystem(LocalFileSystem):
   def format_output(self, output, append=False, **kwargs):
@@ -374,6 +373,7 @@ def test_my_encoded_classes():
   yml(obj, to_file="encoded_obj.yml", pfx=pfx)
   yml(obj, to_file="encoded_other_obj.yml", pfx=pfx)
 
+  encoder = MyEncoder(pfx)
   def check_encoded(f):
     import pathlib
     with pathlib.Path(f).open("r") as input:
