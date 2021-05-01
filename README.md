@@ -49,7 +49,7 @@ with `to_file`:
 yml(foo, to_file="foo.yml")
 ```
 
-If you prefer, you can also convert object to JSON using function `json()`:
+If you prefer, you can also convert objects to JSON using function `json()`:
 
 ```py
 from yaml_serde import yml
@@ -93,7 +93,7 @@ class Bar:
       return Bar(yml_repr["bar"])
 
 with pathlib.Path("foo.yml").open("r") as input:
-  bar = yml_obj(Foo, input.read())
+  foo = yml_obj(Foo, input.read())
 ```
 
 Since loading YAML from a file is common enough, 
@@ -101,7 +101,7 @@ Since loading YAML from a file is common enough,
 of a file from which to read the input string:
 
 ```py
-bar = yml_obj(Foo, "foo.yml", from_file=True)
+foo = yml_obj(Foo, "foo.yml", from_file=True)
 ```
 
 ## Custom YAML serialization
