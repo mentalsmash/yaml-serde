@@ -322,11 +322,11 @@ class FileSystem:
   def read_file(self, file, **kwargs):
     raise NotImplementedError("read_file() not implemented")
 
-  def process_output(self, file, output, **kwargs):
-    raise NotImplementedError("process_output() not implemented")
+  def format_output(self, file, output, **kwargs):
+    raise NotImplementedError("format_output() not implemented")
   
-  def process_input(self, file, input, **kwargs):
-    raise NotImplementedError("process_input() not implemented")
+  def format_input(self, file, input, **kwargs):
+    raise NotImplementedError("format_input() not implemented")
 
 
 class LocalFileSystem(FileSystem):
@@ -346,10 +346,10 @@ class LocalFileSystem(FileSystem):
     with file.open("r") as f:
       return f.read()
 
-  def process_output(self, file, output, append=False, **kwargs):
+  def format_output(self, file, output, append=False, **kwargs):
     return output
   
-  def process_input(self, file, input, **kwargs):
+  def format_input(self, file, input, **kwargs):
     return input
 
 ################################################################################
@@ -439,10 +439,10 @@ class YamlSerializer:
     return self.fs.read_file(file, **kwargs)
 
   def file_format_out(self, file, yml_str, **kwargs):
-    return self.fs.process_output(file, yml_str, **kwargs)
+    return self.fs.format_output(file, yml_str, **kwargs)
   
   def file_format_in(self, file, yml_str, **kwargs):
-    return self.fs.process_input(file, yml_str, **kwargs)
+    return self.fs.format_input(file, yml_str, **kwargs)
   
   def _file_write(self, file, contents, append=False, **kwargs):
     if not isinstance(file, pathlib.Path):

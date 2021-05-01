@@ -12,15 +12,31 @@ After the appropriate serializers have been defined (see [Custom YAML serializat
 objects can be transformed to a YAML string using function `yml()`:
 
 ```py
-from yaml_serde import yml
+from yaml_serde import YamlSerializer, yml, repr_yml
 
-bar = Bar()
-yml_str = yml(bar)
+class Foo(list):
+  def __init__(self):
+    super().__init__(Bar(1), Bar(2), Bar(3))
+
+  class _YamlSerializer(YamlSerializer):
+    def repr_yml(self, py_repr, **kwargs):
+      return {"foo": [repr_yml(b, **kwargs) for b in py_repr]}
+
+class Bar:
+  def __init__(self, n):
+    self.n = n
+
+  class _YamlSerializer(YamlSerializer):
+    def repr_yml(self, py_repr, **kwargs):
+      return {"bar": py_repr.n}
+
+foo = Foo()
+yml_str = yml(foo)
 assert yml_str == """---
-bar:
-  - foo: 1
-  - foo: 2
-  - foo: 3
+foo:
+  - bar: 1
+  - bar: 2
+  - bar: 3
 
 ...
 """
@@ -30,7 +46,7 @@ The result can also be saved directly into a file by specifying a path
 with `to_file`:
 
 ```py
-yml(bar, to_file="bar.yml")
+yml(foo, to_file="foo.yml")
 ```
 
 If you prefer, you can also convert object to JSON using function `json()`:
@@ -38,9 +54,9 @@ If you prefer, you can also convert object to JSON using function `json()`:
 ```py
 from yaml_serde import yml
 
-bar = Bar()
-json_str = json(bar)
-assert json_str == '[{"foo": 1}, {"foo": 2}, {"foo": 3}]'
+foo = Foo()
+json_str = json(foo)
+assert json_str == '{"foo": [{"bar": 1}, {"bar": 2}, {"bar": 3}]}'
 ```
 
 ## YAML to Python
@@ -52,10 +68,32 @@ serializer:
 
 ```py
 import pathlib
-from yaml_serde import yml_obj
+from yaml_serde import YamlSerializer, yml, repr_yml, yml_obj, repr_py
 
-with pathlib.Path("bar.yml").open("r") as input:
-  bar = yml_obj(Bar, input.read())
+class Foo(list):
+  def __init__(self, *args):
+    if not args:
+      args = (Bar(1), Bar(2), Bar(3))
+    super().__init__(*args)
+
+  class _YamlSerializer(YamlSerializer):
+    def repr_yml(self, py_repr, **kwargs):
+      return {"foo": [repr_yml(b, **kwargs) for b in py_repr]}
+    def repr_py(self, yml_repr, **kwargs):
+      return Foo(*[repr_py(Bar, b, **kwargs) for b in yml_repr["foo"]])
+
+class Bar:
+  def __init__(self, n):
+    self.n = n
+
+  class _YamlSerializer(YamlSerializer):
+    def repr_yml(self, py_repr, **kwargs):
+      return {"bar": py_repr.n}
+    def repr_py(self, yml_repr, **kwargs):
+      return Bar(yml_repr["bar"])
+
+with pathlib.Path("foo.yml").open("r") as input:
+  bar = yml_obj(Foo, input.read())
 ```
 
 Since loading YAML from a file is common enough, 
@@ -63,7 +101,7 @@ Since loading YAML from a file is common enough,
 of a file from which to read the input string:
 
 ```py
-bar = yml_obj(Bar, "bar.yml", from_file=True)
+bar = yml_obj(Foo, "foo.yml", from_file=True)
 ```
 
 ## Custom YAML serialization
@@ -124,28 +162,27 @@ formats. These functions can be useful to build a "recursive" serializer:
 ```py
 from yaml_serde import YamlSerializer, repr_yml, repr_py
 
-class Foo:
-  def __init__(self, foo):
-    self.foo = foo
-  
+class Foo(list):
+  def __init__(self, *args):
+    if not args:
+      args = (Bar(1), Bar(2), Bar(3))
+    super().__init__(*args)
+
   class _YamlSerializer(YamlSerializer):
     def repr_yml(self, py_repr, **kwargs):
-      return {"foo": py_repr.foo}
+      return {"foo": [repr_yml(b, **kwargs) for b in py_repr]}
     def repr_py(self, yml_repr, **kwargs):
-      return Foo(foo=yml_repr["foo"])
+      return Foo(*[repr_py(Bar, b, **kwargs) for b in yml_repr["foo"]])
 
 class Bar:
-  def __init__(self, bar=None):
-    if bar is None:
-      self.bar = [Foo(1), Foo(2), Foo(3)]
-    else:
-      self.bar = bar
-  
+  def __init__(self, n):
+    self.n = n
+
   class _YamlSerializer(YamlSerializer):
     def repr_yml(self, py_repr, **kwargs):
-      return [repr_yml(f, **kwargs) for f in py_repr.bar]
+      return {"bar": py_repr.n}
     def repr_py(self, yml_repr, **kwargs):
-      return Bar(bar=[repr_py(Foo, f) for f in yml_repr])
+      return Bar(yml_repr["bar"])
 ```
 
 The serializer class will be passed through all the extra keyword
@@ -226,6 +263,14 @@ class MyEncodedClass:
       encoder = kwargs["encoder"]
       return encoder.decode(yml_str)
 
+class MyEncoder:
+  def __init__(self, prefix):
+    self.prefix = prefix
+  def encode(self, contents):
+    return f"{self.prefix}{contents}{self.prefix}"
+  def decode(self, contents):
+    return contents[len(self.prefix):-len(self.prefix)]
+
 def test_my_encoded_class():
   from yaml_serde import yml, yml_obj
   
@@ -233,10 +278,17 @@ def test_my_encoded_class():
 
   obj = MyEncodedClass("foo", "bar")
   
-  encoder = MyEncoder()
+  pfx = "****\n"
+  encoder = MyEncoder(pfx)
 
   yml(obj, to_file="encoded.yml", encoder=encoder)
-  
+
+  import pathlib
+  with pathlib.Path("encoded.yml").open("r") as input:
+    encoded = input.read();
+    assert encoded.startswith(pfx)
+    assert encoded.endswith(pfx)
+
   obj = yml_obj(MyEncodedClass, "encoded.yml", from_file=True, encoder=encoder)
 
   assert obj.user == "foo"
@@ -259,11 +311,21 @@ class MyEncodedFileSystem(LocalFileSystem):
   def __init__(self):
     self.encoded = MyEncoder()
 
-  def process_output(self, output, append=False, **kwargs):
-    return self.encoder.encode(output)
+  def format_output(self, output, append=False, **kwargs):
+    pfx = kwargs.get("pfx")
+    if pfx is not None:
+      encoded = MyEncoder(pfx)
+      return self.encoder.encode(output)
+    else:
+      return output
   
-  def process_input(self, input, **kwargs):
-    return self.encoder.decode(input)
+  def format_input(self, input, **kwargs):
+    pfx = kwargs.get("pfx")
+    if pfx is not None:
+      encoded = MyEncoder(pfx)
+      return self.encoder.decode(input)
+    else:
+      return input
 
 class MyEncodedClass:
   def __init__(self, user : str, passwd : str):
@@ -287,5 +349,36 @@ class MyOtherEncodedClass:
       return py_repr.foo
     def repr_py(self, yml_repr, **kwargs):
       return MyClass(yml_repr)
+
+
+def test_my_encoded_classes():
+  from yaml_serde import yml, yml_obj
+  
+  from my_encoder_package import MyEncoder
+
+  obj = MyEncodedClass("foo", "bar")
+  other_obj = MyOtherEncodedClass("foo")
+
+  pfx = "****\n"
+
+  yml(obj, to_file="encoded_obj.yml", pfx=pfx)
+  yml(obj, to_file="encoded_other_obj.yml", pfx=pfx)
+
+  import pathlib
+  def check_encoded(f):
+    with pathlib.Path(f).open("r") as input:
+      encoded = input.read();
+      assert encoded.startswith(pfx)
+      assert encoded.endswith(pfx)
+  
+  check_encoded("encoded_obj.yml")
+  check_encoded("encoded_other_obj.yml")
+
+  obj = yml_obj(MyEncodedClass, "encoded_obj.yml", from_file=True, pfx=pfx)
+  assert obj.user == "foo"
+  assert obj.passwd == "bar"
+
+  other_obj = yml_obj(MyOtherEncodedClass, "encoded_other_obj.yml", from_file=True, pfx=pfx)
+  assert other_obj.foo == "foo"
 
 ```
