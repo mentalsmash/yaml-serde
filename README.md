@@ -59,20 +59,20 @@ with pathlib.Path("bar.yml").open("r") as input:
 ```
 
 Since loading YAML from a file is common enough, 
-`yml_obj()` offers argument `from_file` to specify the path of file
-from which to read the input string:
+`yml_obj()` offers argument `from_file` to indicate that the input is the path
+of a file from which to read the input string:
 
 ```py
-bar = yml_obj(Bar, from_file="bar.yml")
+bar = yml_obj(Bar, "bar.yml", from_file=True)
 ```
 
 ## Custom YAML serialization
 
 The *yaml-serde* framework is built on top of [PyYAML](https://pypi.org/project/PyYAML/),
-as way to wrap functions `yaml.safe_dump()` and `yaml.safe_load()` so that
-they may be used with objects of any user-defined class.
+as way to easily call functions `yaml.safe_dump()` and `yaml.safe_load()` on
+objects of any user-defined class.
 
-These functions only accept basic Python objects such as numbers, strings,
+The PyYAML functions only accept basic Python objects such as numbers, strings,
 arrays, and dictionaries, and they are designed to reject any generic "object"
 (which must be handled using their "unsafe" counterparts).
 
@@ -192,12 +192,12 @@ def test_my_class_with_private_fields():
 Class `YamlSerializer` offers two methods which subclasses can override
 to customize the serialization of data in files:
 
-- `YamlSerializer::_file_format_out()` is called when a YAML string is
+- `YamlSerializer::file_format_out()` is called when a YAML string is
   about to be written to a file. It takes the YAML string
   (along with any extra keyword arguments passed to `yml()`), and it
   must return the actual string that will be written to the file system.
 
-- `YamlSerializer::_file_format_in()` is load whenever a YAML string is
+- `YamlSerializer::file_format_in()` is called whenever a YAML string is
   loaded from a file. It take the file's contents (along with any extra
   keywork arguments passed to `yml_obj()`) and it must return the
   string to parse into an object.
@@ -219,10 +219,10 @@ class MyEncodedClass:
       return {"user": py_repr.user, "passwd": py_repr.passwd}
     def repr_py(self, yml_repr, **kwargs):
       return MyClass(yml_repr["user"], yml_repr["passwd"])
-    def _file_format_in(self, yml_str, **kwargs):
+    def file_format_in(self, yml_str, **kwargs):
       encoder = kwargs["encoder"]
       return encoder.encode(yml_str)
-    def _file_format_out(self, yml_str, **kwargs):
+    def file_format_out(self, yml_str, **kwargs):
       encoder = kwargs["encoder"]
       return encoder.decode(yml_str)
 
@@ -237,8 +237,55 @@ def test_my_encoded_class():
 
   yml(obj, to_file="encoded.yml", encoder=encoder)
   
-  obj = yml_obj(MyEncodedClass, from_file="encoded.yml", encoder=encoder)
+  obj = yml_obj(MyEncodedClass, "encoded.yml", from_file=True, encoder=encoder)
 
   assert obj.user == "foo"
   assert obj.passwd == "bar"
+```
+
+A similar result may also be achieved by having the serializer use a custom
+`FileSystem` implementation. By default, any `YamlSerializer` will rely on a
+`LocalFileSytem` instance, which provides access to writing and storing files
+in the local file system, and does not apply any transformation to file
+contents.
+
+Overriding the `FileSystem` class allows the same processing logic to be reused
+by multiple `YamlSerializer` classes:
+
+```py
+from yaml_serde import LocalFileSystem
+
+class MyEncodedFileSystem(LocalFileSystem):
+  def __init__(self):
+    self.encoded = MyEncoder()
+
+  def process_output(self, output, append=False, **kwargs):
+    return self.encoder.encode(output)
+  
+  def process_input(self, input, **kwargs):
+    return self.encoder.decode(input)
+
+class MyEncodedClass:
+  def __init__(self, user : str, passwd : str):
+    self.user = user
+    self.passwd = passwd
+  
+  class _YamlSerializer(YamlSerializer):
+    fs = MyEncodedFileSystem()
+    def repr_yml(self, py_repr, **kwargs):
+      return {"user": py_repr.user, "passwd": py_repr.passwd}
+    def repr_py(self, yml_repr, **kwargs):
+      return MyClass(yml_repr["user"], yml_repr["passwd"])
+
+class MyOtherEncodedClass:
+  def __init__(self, foo : str):
+    self.foo = foo
+
+  class _YamlSerializer(YamlSerializer):
+    fs = MyEncodedFileSystem()
+    def repr_yml(self, py_repr, **kwargs):
+      return py_repr.foo
+    def repr_py(self, yml_repr, **kwargs):
+      return MyClass(yml_repr)
+
 ```
